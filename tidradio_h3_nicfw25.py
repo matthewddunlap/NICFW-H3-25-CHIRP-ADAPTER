@@ -225,7 +225,7 @@ EEPROM_SIZE = 8192  # 8 KB
 NUM_BLOCKS = EEPROM_SIZE // BLOCK_SIZE  # 256
 
 # Channel/settings constants
-MODULATION_LIST = ["Auto", "FM", "NFM", "AM", "USB"]
+MODULATION_LIST = ["Auto", "FM", "AM", "USB"]
 BANDWIDTH_LIST = ["Wide", "Narrow"]
 GROUPS_LIST = ["None", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
 # txPower: 0 = N/T (No Transmit); 1..255 = raw transmit level (Max Power = settings VHF/UHF).
@@ -507,7 +507,6 @@ def _memory_to_channel(memobj, number, mem):
     else:
         _mem.modulation = MODULATION_LIST.index(mem.mode) if mem.mode in MODULATION_LIST else 1
         _mem.bandwidth = 0
-    _mem.bandwidth = 1 if mem.extra and any(e.get_name() == "bandwidth" and "Narrow" in str(e.value) for e in mem.extra) else 0
     # Busy Lock is incompatible with repeater/split operation (radio rule).
     _busy_requested = bool(mem.extra and any(e.get_name() == "busyLock" and bool(e.value) for e in mem.extra))
     _mem.busyLock  = 1 if (_busy_requested and mem.duplex not in ("+", "-", "split")) else 0
@@ -567,7 +566,7 @@ class TH3NicFw25(chirp_common.CloneModeRadio):
             (136000000, 174000000),  # VHF TX/RX
             (400000000, 480000000),  # UHF TX/RX
         ]
-        rf.valid_modes = MODULATION_LIST
+        rf.valid_modes = ["Auto", "FM", "NFM", "AM", "USB"]
         rf.valid_duplexes = ["", "-", "+", "split", "off"]
         rf.valid_skips = ["", "S"]
         rf.valid_name_length = 12
