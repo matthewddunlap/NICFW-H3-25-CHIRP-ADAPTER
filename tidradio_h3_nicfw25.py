@@ -836,18 +836,16 @@ class TH3NicFw25(chirp_common.CloneModeRadio):
 
     def set_settings(self, ui):
         s = self._memobj.settings
-
         def apply_el(element):
+            if isinstance(element, RadioSetting):
+                name = element.get_name()
+                val = element.value.get_value() if hasattr(element.value, "get_value") else element.value
+                self._apply_one_setting(name, val)
+                return
             if isinstance(element, RadioSettingGroup):
                 for child in element:
                     apply_el(child)
                 return
-            if not isinstance(element, RadioSetting):
-                return
-            name = element.get_name()
-            val = element.value.get_value() if hasattr(element.value, "get_value") else element.value
-            self._apply_one_setting(name, val)
-
         for el in ui:
             apply_el(el)
 
