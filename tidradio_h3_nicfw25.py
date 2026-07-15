@@ -228,8 +228,12 @@ NUM_BLOCKS = EEPROM_SIZE // BLOCK_SIZE  # 256
 MODULATION_LIST = ["Auto", "FM", "AM", "USB"]
 BANDWIDTH_LIST = ["Wide", "Narrow"]
 GROUPS_LIST = ["None", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
-# txPower: 0 = N/T (No Transmit); 1..Max Power = transmit level (Max Power = settings VHF/UHF, e.g. 130).
-POWERLEVEL_LIST = ["N/T"] + [str(x) for x in range(1, 256)]
+# txPower: 0 = N/T (No Transmit); 1..255 = raw transmit level (Max Power = settings VHF/UHF).
+# CHIRP requires valid_power_levels to contain chirp_common.PowerLevel objects, not plain
+# strings — its copy/paste compatibility check calls int() on every entry, which crashes on
+# a bare "N/T" string. dBm is used (not watts) so the 1-255 raw value round-trips exactly.
+POWER_LEVELS = [chirp_common.PowerLevel("N/T", dBm=0)] + \
+               [chirp_common.PowerLevel(str(x), dBm=x) for x in range(1, 256)]
 TXPower_NT = 0  # 0 = No Transmit
 
 # Settings block option lists (per settingsBlock.md and nicFW behaviour)
@@ -421,7 +425,7 @@ def _channel_to_memory(memobj, number, mem):
         mem.duplex = "+" if txf > rxf else "-"
         mem.offset = abs(rxf - txf) * 10
     _tx = int(_mem.txPower)
-    mem.power = "N/T" if _tx == TXPower_NT else (str(_tx) if 1 <= _tx <= 255 else "1")
+    mem.power = POWER_LEVELS[_tx] if 0 <= _tx <= 255 else POWER_LEVELS[1]
     # Decode name from raw channel bytes (name is last 12 bytes of 32-byte channelInfo)
     raw = _mem.get_raw()
     if raw and len(raw) >= 32:
@@ -483,7 +487,11 @@ def _memory_to_channel(memobj, number, mem):
         _mem.txFreq = (mem.freq - mem.offset) // 10
     else:
         _mem.txFreq = mem.freq // 10
-    _mem.txPower = TXPower_NT if mem.power == "N/T" else (int(mem.power) if mem.power.isdigit() and 1 <= int(mem.power) <= 255 else 1)
+    if mem.power is None:
+        _mem.txPower = TXPower_NT
+    else:
+        _tx = int(mem.power)
+        _mem.txPower = _tx if 0 <= _tx <= 255 else 1
     name = (mem.name or "")[:12].ljust(12)
     for i, c in enumerate(name):
         _mem.name[i] = ord(c) if ord(c) < 256 else 0x20
@@ -552,7 +560,7 @@ class TH3NicFw25(chirp_common.CloneModeRadio):
         rf.valid_duplexes = ["", "-", "+", "split", "off"]
         rf.valid_skips = ["", "S"]
         rf.valid_name_length = 12
-        rf.valid_power_levels = POWERLEVEL_LIST
+        rf.valid_power_levels = POWER_LEVELS
         rf.memory_bounds = (1, 198)  # Radio shows "Channel Bank 1".."198"; CHIRP 1-198 = memory[0]..[197]
         rf.has_comment = True
         # Tuning step: free entry in CHIRP (empty list); default 12.5 kHz when inferring from frequency
@@ -602,7 +610,10 @@ class TH3NicFw25(chirp_common.CloneModeRadio):
             want_narrow = bool(mem.extra and any(e.get_name() == "bandwidth" and "Narrow" in str(e.value) for e in mem.extra))
             off = 0x40 + index * 32 + 15
             if off + 1 <= len(self._mmap):
-                self._mmap[off] = (self._mmap[off] & 0xFE) | (1 if want_narrow else 0)
+                cur = self._mmap[off]
+                cur_val = cur[0] if isinstance(cur, (bytes, bytearray)) else int(cur)
+                new_val = (cur_val & 0xFE) | (1 if want_narrow else 0)
+                self._mmap[off] = new_val
 
     def get_settings(self):
         s = self._memobj.settings
